@@ -13,6 +13,9 @@ const friendsRoutes = require('./routes/friends');
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+// Trust Render's proxy (required for express-rate-limit on Render/Heroku)
+app.set('trust proxy', 1);
+
 // Security
 app.use(helmet());
 app.use(cors({ origin: '*' }));

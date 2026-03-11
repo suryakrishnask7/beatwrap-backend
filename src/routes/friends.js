@@ -24,6 +24,47 @@ router.get('/search', authMiddleware, async (req, res) => {
   }
 });
 
+// POST /api/friends/request/email — add by email address
+router.post('/request/email', authMiddleware, async (req, res) => {
+  try {
+    const { fromId, email } = req.body;
+    if (!email) return res.status(400).json({ error: 'Email required' });
+
+    const toUser = await User.findOne({ email: email.toLowerCase().trim() });
+    if (!toUser) return res.status(404).json({ error: 'User not found' });
+    if (toUser._id.toString() === fromId) return res.status(400).json({ error: 'Cannot add yourself' });
+
+    // Check if already friends
+    if (toUser.friends?.includes(fromId)) return res.status(400).json({ error: 'Already friends' });
+
+    // Check if request already exists
+    const already = toUser.friendRequests?.find(r => r.from.toString() === fromId && r.status === 'pending');
+    if (already) return res.status(400).json({ error: 'Request already sent' });
+
+    toUser.friendRequests = toUser.friendRequests || [];
+    toUser.friendRequests.push({ from: fromId, status: 'pending' });
+    await toUser.save();
+
+    res.json({ success: true, toName: toUser.displayName });
+  } catch (e) {
+    console.error('Friend request by email error:', e);
+    res.status(500).json({ error: 'Failed to send request' });
+  }
+});
+
+// GET /api/friends/requests/pending/:userId
+router.get('/requests/pending/:userId', authMiddleware, async (req, res) => {
+  try {
+    const user = await User.findById(req.params.userId)
+      .populate('friendRequests.from', 'displayName email profileImage');
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    const pending = (user.friendRequests || []).filter(r => r.status === 'pending');
+    res.json({ requests: pending });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to fetch requests' });
+  }
+});
+
 // POST /api/friends/request
 router.post('/request', authMiddleware, async (req, res) => {
   try {

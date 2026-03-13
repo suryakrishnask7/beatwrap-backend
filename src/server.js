@@ -1,69 +1,123 @@
-require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
-const helmet = require('helmet');
-const rateLimit = require('express-rate-limit');
-
-const authRoutes = require('./routes/auth');
-const wrapRoutes = require('./routes/wrap');
-const moodRoutes = require('./routes/mood');
-const friendsRoutes = require('./routes/friends');
+const http = require('http');
+const { WebSocketServer } = require('ws');
+const jwt = require('jsonwebtoken');
+require('dotenv').config();
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const server = http.createServer(app); // HTTP server wraps express
 
-// Trust Render's proxy (required for express-rate-limit on Render/Heroku)
-app.set('trust proxy', 1);
+// ── WebSocket Server ──────────────────────────────────────────────────────────
+const wss = new WebSocketServer({ server });
 
-// Security
-app.use(helmet());
-app.use(cors({ origin: '*' }));
-app.use(express.json({ limit: '5mb' }));
+// Map: userId (string) → WebSocket connection
+// When a message is sent, we look up the recipient's socket and push it live
+const clients = new Map();
 
-// Rate limiting
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 min
-  max: 100,
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-app.use(limiter);
+wss.on('connection', (ws, req) => {
+  let userId = null;
 
-// Routes
-app.use('/api/auth', authRoutes);
-app.use('/api/wrap', wrapRoutes);
-app.use('/api/mood', moodRoutes);
-app.use('/api/friends', friendsRoutes);
+  ws.on('message', async (data) => {
+    try {
+      const msg = JSON.parse(data.toString());
 
-// Health check
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok', version: '1.0.0', service: 'BeatWrap API' });
-});
+      // First message must be { type: 'auth', token: JWT }
+      if (msg.type === 'auth') {
+        const decoded = jwt.verify(msg.token, process.env.JWT_SECRET);
+        userId = decoded.id.toString();
+        clients.set(userId, ws);
+        ws.send(JSON.stringify({ type: 'auth_ok', userId }));
+        console.log(`WS: user ${userId} connected`);
+        return;
+      }
 
-// 404
-app.use((req, res) => {
-  res.status(404).json({ error: 'Route not found' });
-});
+      if (!userId) {
+        ws.send(JSON.stringify({ type: 'error', message: 'Not authenticated' }));
+        return;
+      }
 
-// Error handler
-app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({ error: 'Internal server error' });
-});
+      // { type: 'message', to: userId, text, msgType, payload }
+      if (msg.type === 'message') {
+        const Message = require('./models/Message');
 
-// Connect to MongoDB and start server
-mongoose
-  .connect(process.env.MONGODB_URI)
-  .then(() => {
-    console.log('✅ MongoDB connected');
-    app.listen(PORT, () => {
-      console.log(`🎵 BeatWrap API running on port ${PORT}`);
-    });
-  })
-  .catch(err => {
-    console.error('❌ MongoDB connection failed:', err.message);
-    process.exit(1);
+        const conversationId = [userId, msg.to].sort().join('_');
+        const saved = await Message.create({
+          conversationId,
+          from: userId,
+          to: msg.to,
+          type: msg.msgType || 'text',
+          text: msg.text || '',
+          payload: msg.payload || null,
+        });
+
+        const outgoing = {
+          type: 'message',
+          _id: saved._id.toString(),
+          conversationId,
+          from: userId,
+          to: msg.to,
+          msgType: saved.type,
+          text: saved.text,
+          payload: saved.payload,
+          createdAt: saved.createdAt,
+        };
+
+        // Send to recipient if online
+        const recipientWs = clients.get(msg.to);
+        if (recipientWs && recipientWs.readyState === 1) {
+          recipientWs.send(JSON.stringify(outgoing));
+        }
+
+        // Echo back to sender with the saved _id and timestamp
+        ws.send(JSON.stringify({ ...outgoing, type: 'message_sent' }));
+      }
+
+    } catch (e) {
+      console.error('WS message error:', e.message);
+      ws.send(JSON.stringify({ type: 'error', message: e.message }));
+    }
   });
 
-module.exports = app;
+  ws.on('close', () => {
+    if (userId) {
+      clients.delete(userId);
+      console.log(`WS: user ${userId} disconnected`);
+    }
+  });
+
+  ws.on('error', (e) => console.error('WS error:', e.message));
+});
+
+// ── Express Middleware ────────────────────────────────────────────────────────
+app.set('trust proxy', 1);
+app.use(cors({
+  origin: [
+    'http://localhost:5173',
+    'http://localhost:3000',
+    process.env.FRONTEND_URL,
+  ].filter(Boolean),
+  credentials: true,
+}));
+app.use(express.json());
+
+// ── Routes ────────────────────────────────────────────────────────────────────
+app.use('/api/auth', require('./routes/auth'));
+app.use('/api/friends', require('./routes/friends'));
+app.use('/api/wrap', require('./routes/wrap'));
+app.use('/api/mood', require('./routes/mood'));
+app.use('/api/messages', require('./routes/messages'));
+
+app.get('/health', (req, res) => res.json({ status: 'ok', timestamp: new Date() }));
+
+// ── MongoDB ───────────────────────────────────────────────────────────────────
+mongoose.connect(process.env.MONGODB_URI)
+  .then(() => console.log('MongoDB connected'))
+  .catch(e => console.error('MongoDB error:', e));
+
+// ── Start ─────────────────────────────────────────────────────────────────────
+const PORT = process.env.PORT || 5000;
+server.listen(PORT, () => console.log(`Server + WS running on port ${PORT}`));
+
+module.exports = { app, wss, clients };

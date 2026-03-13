@@ -3,41 +3,42 @@ const MoodLog = require('../models/MoodLog');
 const authMiddleware = require('../middleware/auth');
 const router = express.Router();
 
-const getWeekKey = (date = new Date()) => {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  d.setDate(d.getDate() + 3 - (d.getDay() + 6) % 7);
-  const week1 = new Date(d.getFullYear(), 0, 4);
-  const weekNum = 1 + Math.round(((d - week1) / 86400000 - 3 + (week1.getDay() + 6) % 7) / 7);
-  return `${d.getFullYear()}-W${String(weekNum).padStart(2, '0')}`;
-};
-
-// POST /api/mood/:userId
-router.post('/:userId', authMiddleware, async (req, res) => {
+// POST /api/mood/save — save a single day's mood
+router.post('/save', authMiddleware, async (req, res) => {
   try {
-    const { userId } = req.params;
-    const { day, dayIndex, emoji, label, value, note, timestamp } = req.body;
-    const weekKey = getWeekKey();
+    const { weekKey, dayIndex, day, emoji, label, value, note } = req.body;
+    if (weekKey === undefined || dayIndex === undefined) {
+      return res.status(400).json({ error: 'weekKey and dayIndex required' });
+    }
 
-    const moodLog = await MoodLog.findOneAndUpdate(
-      { userId, weekKey, day },
-      { userId, weekKey, day, dayIndex, emoji, label, value, note, timestamp },
+    // Upsert — update if exists, create if not
+    const log = await MoodLog.findOneAndUpdate(
+      { userId: req.user.id, weekKey, dayIndex },
+      { emoji, label, value, note: note || '', day, loggedAt: new Date() },
       { upsert: true, new: true }
     );
 
-    res.json({ success: true, moodLog });
+    res.json({ success: true, log });
   } catch (e) {
-    console.error('Save mood error:', e);
+    console.error('Mood save error:', e);
     res.status(500).json({ error: 'Failed to save mood' });
   }
 });
 
-// GET /api/mood/:userId/:weekKey
-router.get('/:userId/:weekKey', authMiddleware, async (req, res) => {
+// GET /api/mood/week?weekKey= — get all moods for a week
+router.get('/week', authMiddleware, async (req, res) => {
   try {
-    const { userId, weekKey } = req.params;
-    const moods = await MoodLog.find({ userId, weekKey }).sort({ dayIndex: 1 });
-    res.json(moods);
+    const { weekKey } = req.query;
+    if (!weekKey) return res.status(400).json({ error: 'weekKey required' });
+
+    const logs = await MoodLog.find({ userId: req.user.id, weekKey });
+    // Return as object keyed by dayIndex for easy lookup
+    const byDay = {};
+    logs.forEach(l => {
+      byDay[l.dayIndex] = { emoji: l.emoji, label: l.label, value: l.value, note: l.note, day: l.day, timestamp: l.loggedAt?.getTime() };
+    });
+
+    res.json({ moods: byDay });
   } catch (e) {
     res.status(500).json({ error: 'Failed to fetch moods' });
   }

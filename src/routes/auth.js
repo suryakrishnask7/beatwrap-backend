@@ -96,4 +96,25 @@ router.get('/check-username/:username', async (req, res) => {
   }
 });
 
+
+// GET /api/auth/stats — real profile stats for ProfileScreen
+router.get('/stats', authMiddleware, async (req, res) => {
+  try {
+    const WeeklyWrap = require('../models/WeeklyWrap');
+    const MoodLog = require('../models/MoodLog');
+    const user = await User.findById(req.user.id).select('friends');
+    const [wrapCount, moodCount] = await Promise.all([
+      WeeklyWrap.countDocuments({ userId: req.user.id }),
+      MoodLog.countDocuments({ userId: req.user.id }),
+    ]);
+    res.json({
+      wraps: wrapCount,
+      moodDays: moodCount,
+      friends: user?.friends?.length || 0,
+    });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to fetch stats' });
+  }
+});
+
 module.exports = router;

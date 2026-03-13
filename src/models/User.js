@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const userSchema = new mongoose.Schema({
   spotifyId: { type: String, required: true, unique: true },
   displayName: { type: String, required: true },
+  username: { type: String, unique: true, sparse: true, lowercase: true, trim: true },
   email: { type: String },
   profileImage: { type: String },
   spotifyToken: { type: String },

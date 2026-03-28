@@ -89,8 +89,12 @@ app.get('/health', (req, res) => res.json({ status: 'ok', timestamp: new Date() 
 mongoose.connect(process.env.MONGODB_URI)
   .then(() => {
     console.log('MongoDB connected');
-    const { startScheduler } = require('./services/wrapScheduler');
-    startScheduler();
+    try {
+      const { startScheduler } = require('./services/wrapScheduler');
+      startScheduler();
+    } catch (error) {
+      console.error('Scheduler startup error:', error);
+    }
   })
   .catch(e => console.error('MongoDB error:', e));
 

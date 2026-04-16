@@ -13,6 +13,8 @@ const userSchema = new mongoose.Schema({
     status: { type: String, enum: ['pending', 'accepted', 'rejected'], default: 'pending' },
     createdAt: { type: Date, default: Date.now },
   }],
+  // NEW: tracks when user last regenerated their character — enforces once-per-day limit
+  lastCharacterRegenAt: { type: Date, default: null },
 }, { timestamps: true });
 
 module.exports = mongoose.model('User', userSchema);

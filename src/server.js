@@ -74,7 +74,7 @@ app.use(cors({
   origin: ['http://localhost:5173', 'http://localhost:3000', process.env.FRONTEND_URL].filter(Boolean),
   credentials: true,
 }));
-app.use(express.json({ limit: '5mb' })); // 5mb for listening history payloads
+app.use(express.json({ limit: '5mb' }));
 
 // ── Routes ────────────────────────────────────────────────────────────────────
 app.use('/api/auth', require('./routes/auth'));
@@ -85,17 +85,10 @@ app.use('/api/messages', require('./routes/messages'));
 app.use('/api/listening', require('./routes/listening'));
 app.get('/health', (req, res) => res.json({ status: 'ok', timestamp: new Date() }));
 
-// ── MongoDB + start scheduler after connect ───────────────────────────────────
+// ── MongoDB connect — NO scheduler ───────────────────────────────────────────
+// REMOVED: startScheduler() — wrap generation is now 100% user-triggered from frontend
 mongoose.connect(process.env.MONGODB_URI)
-  .then(() => {
-    console.log('MongoDB connected');
-    try {
-      const { startScheduler } = require('./services/wrapScheduler');
-      startScheduler();
-    } catch (error) {
-      console.error('Scheduler startup error:', error);
-    }
-  })
+  .then(() => console.log('MongoDB connected'))
   .catch(e => console.error('MongoDB error:', e));
 
 const PORT = process.env.PORT || 5000;

@@ -8,7 +8,6 @@ const router = express.Router();
 
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
 
-// ── Tamil characters list for character-only regeneration ─────────────────────
 const TAMIL_CHARACTERS = [
   { name: 'Chithan', film: 'Pithamagan', vibe: 'Dark ambient, sparse instrumentals, drone loops, silence as sound.' },
   { name: 'Velu Nayakan', film: 'Nayakan', vibe: 'Slow orchestral builds, Ilaiyaraaja emotional swells, weight of a whole life.' },
@@ -28,16 +27,17 @@ const TAMIL_CHARACTERS = [
   { name: 'Gandhi Mahaan', film: 'Mahaan', vibe: 'Genre-blending, classical then trap, cannot be pinned down.' },
   { name: 'Rishi Kumar', film: 'Roja', vibe: 'Soft AR Rahman, longing instrumentals, missing someone far away.' },
   { name: 'Roja', film: 'Roja', vibe: 'Waiting melodies, slow violin, hope held very carefully.' },
-  { name: 'Karthik', film: 'Alaipayuthey', vibe: 'Youthful AR Rahman, upbeat Tamil pop, first week of being in love.' },
+  { name: 'Karthik_Alaipayuthey', film: 'Alaipayuthey', vibe: 'Youthful AR Rahman, upbeat Tamil pop, first week of being in love.' },
   { name: 'Nallasivam', film: 'Anbe Sivam', vibe: 'Warm humanist folk, beauty in ordinary moments, arm around your shoulder.' },
   { name: 'Prabhu', film: 'Polladhavan', vibe: 'Street energy, gritty Tamil beats, garage midnight underground.' },
   { name: 'Divya', film: 'Mouna Ragam', vibe: 'Layered emotional Ilaiyaraaja, refuses to be simple, bittersweet.' },
   { name: 'Pariyerum Perumal', film: 'Pariyerum Perumal', vibe: 'Indie Tamil folk, Santhosh Narayanan rawness, quiet pain.' },
   { name: 'Kabali', film: 'Kabali', vibe: 'Santhosh Narayanan swagger, slow-walk BGMs, arriving somewhere important.' },
-  { name: 'Prabhu', film: 'Irudhi Suttru', vibe: 'Driven beats, focused energy, no time for sentimentality.' },
+  { name: 'Prabhu_IS', film: 'Irudhi Suttru', vibe: 'Driven beats, focused energy, no time for sentimentality.' },
   { name: 'Deepak', film: 'Dhruvangal Pathinaaru', vibe: 'Minimal thriller scores, silence as music, never quite resolves.' },
   { name: 'Jordan', film: 'Sarpatta Parambarai', vibe: 'Rise, fall, redemption — motivation and comeback energy.' },
-  { name: 'Pariyerum Perumal', film: 'Pariyerum Perumal', vibe: 'Indie folk, rooted emotion, quiet resilience.' },
+  { name: 'Arjun', film: '7G Rainbow Colony', vibe: 'Youth heartbreak, obsessive love songs, emotional chaos.' },
+  { name: 'Sethu', film: 'Sethu', vibe: 'Pain-heavy melodies, tragic ballads, identity lost to love.' },
 ];
 
 const CHARACTER_LIST = TAMIL_CHARACTERS.map(c => `${c.name} (${c.film}) — ${c.vibe}`).join('\n');
@@ -73,15 +73,12 @@ router.post('/save', authMiddleware, async (req, res) => {
 
     const existing = await WeeklyWrap.findOne({ userId, weekKey });
     if (existing) {
-      console.log(`Wrap already locked for user ${req.user.id} week ${weekKey}`);
       return res.json({ saved: false, wrap: existing.aiWrap, stats: existing.stats, message: 'Already locked for this week' });
     }
 
     const newWrap = await WeeklyWrap.create({ userId, weekKey, aiWrap, stats });
-    console.log(`Wrap saved for user ${req.user.id} week ${weekKey}`);
     res.json({ saved: true, wrap: newWrap.aiWrap, stats: newWrap.stats });
   } catch (e) {
-    console.error('Save wrap error:', e.message, e.code);
     if (e.code === 11000) {
       const existing = await WeeklyWrap.findOne({
         userId: new mongoose.Types.ObjectId(req.user.id),
@@ -108,137 +105,115 @@ router.get('/history', authMiddleware, async (req, res) => {
   }
 });
 
-// ── NEW: POST /api/wrap/regenerate-character ──────────────────────────────────
-// Enforces once-per-24h limit on the backend. Generates a new character using
-// the user's actual listening stats from their current wrap, then updates the
-// stored wrap in Atlas so friends also see the updated character.
-router.post('/regenerate-character', authMiddleware, async (req, res) => {
+// POST /api/wrap/regenerate-wrap
+// Regenerates the FULL wrap (story + vibe + character). 24h cooldown enforced.
+// Updates Atlas so friends see the refreshed wrap too.
+router.post('/regenerate-wrap', authMiddleware, async (req, res) => {
   try {
     const userId = new mongoose.Types.ObjectId(req.user.id);
     const { weekKey } = req.body;
     if (!weekKey) return res.status(400).json({ error: 'weekKey required' });
 
-    // ── 24h cooldown check ────────────────────────────────────────────────────
+    // 24h cooldown check
     const user = await User.findById(userId).select('lastCharacterRegenAt');
     if (user.lastCharacterRegenAt) {
       const msSinceLast = Date.now() - new Date(user.lastCharacterRegenAt).getTime();
       const msIn24h = 24 * 60 * 60 * 1000;
       if (msSinceLast < msIn24h) {
-        const msRemaining = msIn24h - msSinceLast;
-        const hoursLeft = Math.ceil(msRemaining / (60 * 60 * 1000));
+        const hoursLeft = Math.ceil((msIn24h - msSinceLast) / (60 * 60 * 1000));
         return res.status(429).json({
           error: 'cooldown',
-          message: `You can regenerate your character once per day. Try again in ${hoursLeft} hour${hoursLeft === 1 ? '' : 's'}.`,
+          message: `You can regenerate your wrap once per day. Try again in ${hoursLeft} hour${hoursLeft === 1 ? '' : 's'}.`,
           hoursLeft,
         });
       }
     }
 
-    // ── Get user's current wrap for their listening stats ─────────────────────
+    // Get current wrap for stats
     const currentWrap = await WeeklyWrap.findOne({ userId, weekKey });
-    if (!currentWrap || !currentWrap.stats) {
+    if (!currentWrap?.stats) {
       return res.status(404).json({ error: 'No wrap found for this week. Generate your wrap first.' });
     }
 
     const { topGenres, topArtists, topTracks } = currentWrap.stats;
 
-    // ── Ask Groq for a new character only ─────────────────────────────────────
-    const prompt = `You are BeatWrap AI. Based on this user's music listening data, assign them a new Tamil cinema character.
+    const prompt = `You are BeatWrap AI. Regenerate a completely fresh weekly music wrap for this user.
 
 Top Genres: ${topGenres?.map(g => g.genre).join(', ') || 'Mixed'}
-Top Artists: ${topArtists?.slice(0, 6).map(a => a.name).join(', ') || 'Various'}
-Top Tracks: ${topTracks?.slice(0, 6).map(t => `${t.name} by ${t.artists?.[0]?.name}`).join(', ') || 'Various'}
+Top Artists: ${topArtists?.slice(0, 8).map(a => a.name).join(', ') || 'Various'}
+Top Tracks: ${topTracks?.slice(0, 8).map(t => `${t.name} by ${t.artists?.[0]?.name}`).join(', ') || 'Various'}
 
-Previous character this week: ${currentWrap.aiWrap?.tamil_character?.name || 'none'} — pick a DIFFERENT character this time.
+Previous wrap this week: character was "${currentWrap.aiWrap?.tamil_character?.name || 'none'}", label was "${currentWrap.aiWrap?.week_label || ''}".
+You MUST pick a different character and write a completely new story. Different vibe angle, different scenes, fresh perspective.
 
-Choose from this list:
+Available characters:
 ${CHARACTER_LIST}
+
+Write a 120-160 word cinematic story. No psychological analysis. Keep it smooth and aesthetic.
 
 Return ONLY valid JSON — no extra text:
 {
-  "name": "...",
-  "film": "...",
-  "why_this_character": "One sharp sentence explaining the match.",
-  "archetype": "...",
-  "inspired_by": "..."
+  "week_label": "...",
+  "dominant_vibe": "...",
+  "energy_level": "...",
+  "tamil_protagonist": { "archetype": "...", "inspired_by": "..." },
+  "tamil_character": { "name": "...", "film": "...", "why_this_character": "..." },
+  "story": "...",
+  "confidence": 0.0
 }`;
 
-    let newCharacter;
+    let newWrapData;
     try {
       const groqRes = await axios.post(
         'https://api.groq.com/openai/v1/chat/completions',
         {
           model: 'llama-3.3-70b-versatile',
           messages: [{ role: 'user', content: prompt }],
-          max_tokens: 200,
+          max_tokens: 700,
           temperature: 0.9,
         },
         { headers: { Authorization: `Bearer ${GROQ_API_KEY}` } }
       );
       const content = groqRes.data.choices[0].message.content.replace(/```json|```/g, '').trim();
-      newCharacter = JSON.parse(content);
+      newWrapData = JSON.parse(content);
     } catch (groqErr) {
       console.error('Groq regen error:', groqErr?.response?.data || groqErr.message);
-      // Fallback: pick a random different character
       const others = TAMIL_CHARACTERS.filter(c => c.name !== currentWrap.aiWrap?.tamil_character?.name);
       const fallback = others[Math.floor(Math.random() * others.length)];
-      newCharacter = {
-        name: fallback.name,
-        film: fallback.film,
-        why_this_character: `The energy this week resonates with the world of ${fallback.name}.`,
-        archetype: 'The Unexpected',
-        inspired_by: fallback.film,
+      newWrapData = {
+        ...currentWrap.aiWrap,
+        week_label: currentWrap.aiWrap?.week_label + ' (Remix)',
+        tamil_character: {
+          name: fallback.name,
+          film: fallback.film,
+          why_this_character: `Seen through a different lens, this week echoes the world of ${fallback.name}.`,
+        },
+        tamil_protagonist: { archetype: 'The Unexpected', inspired_by: fallback.film },
       };
     }
 
-    // ── Validate character is on the list ─────────────────────────────────────
-    const valid = TAMIL_CHARACTERS.find(c => c.name.toLowerCase() === newCharacter.name?.toLowerCase());
-    if (!valid) {
+    // Validate character
+    const valid = TAMIL_CHARACTERS.find(c =>
+      c.name.toLowerCase() === newWrapData.tamil_character?.name?.toLowerCase()
+    );
+    if (!valid && newWrapData.tamil_character) {
       const fallback = TAMIL_CHARACTERS[Math.floor(Math.random() * TAMIL_CHARACTERS.length)];
-      newCharacter.name = fallback.name;
-      newCharacter.film = fallback.film;
+      newWrapData.tamil_character.name = fallback.name;
+      newWrapData.tamil_character.film = fallback.film;
     }
 
-    // ── Update the wrap in Atlas with new character ───────────────────────────
-    const updatedAiWrap = {
-      ...currentWrap.aiWrap,
-      tamil_character: {
-        name: newCharacter.name,
-        film: newCharacter.film,
-        why_this_character: newCharacter.why_this_character,
-      },
-      tamil_protagonist: {
-        archetype: newCharacter.archetype || currentWrap.aiWrap?.tamil_protagonist?.archetype,
-        inspired_by: newCharacter.inspired_by || newCharacter.film,
-      },
-    };
+    // Update Atlas
+    await WeeklyWrap.findOneAndUpdate({ userId, weekKey }, { aiWrap: newWrapData }, { new: true });
 
-    await WeeklyWrap.findOneAndUpdate(
-      { userId, weekKey },
-      { aiWrap: updatedAiWrap },
-      { new: true }
-    );
-
-    // ── Update user's lastCharacterRegenAt timestamp ──────────────────────────
+    // Update cooldown timestamp
     await User.findByIdAndUpdate(userId, { lastCharacterRegenAt: new Date() });
 
-    console.log(`Character regenerated for user ${req.user.id}: ${newCharacter.name} (${newCharacter.film})`);
+    console.log(`Wrap regenerated for user ${req.user.id}: ${newWrapData.tamil_character?.name}`);
 
-    res.json({
-      success: true,
-      tamil_character: {
-        name: newCharacter.name,
-        film: newCharacter.film,
-        why_this_character: newCharacter.why_this_character,
-      },
-      tamil_protagonist: {
-        archetype: newCharacter.archetype,
-        inspired_by: newCharacter.inspired_by || newCharacter.film,
-      },
-    });
+    res.json({ success: true, wrap: newWrapData });
   } catch (e) {
-    console.error('Regenerate character error:', e);
-    res.status(500).json({ error: 'Failed to regenerate character' });
+    console.error('Regenerate wrap error:', e);
+    res.status(500).json({ error: 'Failed to regenerate wrap' });
   }
 });
 

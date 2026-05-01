@@ -7,9 +7,13 @@ const router = express.Router();
 // POST /api/auth/spotify
 router.post('/spotify', async (req, res) => {
   try {
-    const { spotifyId, displayName, email, profileImage, spotifyToken } = req.body;
-    if (!spotifyId || !displayName) {
-      return res.status(400).json({ error: 'Missing required fields' });
+    let { spotifyId, displayName, email, profileImage, spotifyToken } = req.body;
+
+    if (!spotifyId) return res.status(400).json({ error: 'spotifyId required' });
+
+    // Clean up broken SVG data URIs
+    if (profileImage && profileImage.startsWith('data:image/svg')) {
+      profileImage = null;
     }
 
     let user = await User.findOne({ spotifyId });

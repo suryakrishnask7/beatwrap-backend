@@ -83,6 +83,8 @@ app.use('/api/wrap', require('./routes/wrap'));
 app.use('/api/mood', require('./routes/mood'));
 app.use('/api/messages', require('./routes/messages'));
 app.use('/api/listening', require('./routes/listening'));
+app.use('/api/stats', require('./routes/stats'));
+app.use('/api/sessions', require('./routes/sessions'));
 app.get('/health', (req, res) => res.json({ status: 'ok', timestamp: new Date() }));
 
 // ── MongoDB connect — NO scheduler ───────────────────────────────────────────

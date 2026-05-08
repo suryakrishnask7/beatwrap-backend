@@ -38,8 +38,7 @@ router.post('/sync', authMiddleware, async (req, res) => {
 });
 
 // ── POST /api/listening/incremental ─────────────────────────────────────────
-// Incremental update — uses $inc so values accumulate correctly.
-// Called every hour by the frontend with only the NEW plays since last sync.
+// Incremental update — safely merges new plays into existing history.
 // Body: {
 //   weekKey,
 //   addMinutes: Number,
@@ -54,40 +53,72 @@ router.post('/incremental', authMiddleware, async (req, res) => {
 
     const userId = new mongoose.Types.ObjectId(req.user.id);
 
-    // $inc: accumulate minutes (never overwrite)
-    const incOps = { estimatedMinutes: Number(addMinutes) || 0 };
+    // Fetch existing or create new
+    let history = await ListeningHistory.findOne({ userId, weekKey });
+    if (!history) {
+      history = new ListeningHistory({ userId, weekKey });
+    }
 
+    // Accumulate total minutes
+    history.estimatedMinutes += (Number(addMinutes) || 0);
+
+    // Accumulate daily minutes
     if (dailyMinutes) {
-      Object.entries(dailyMinutes).forEach(([date, mins]) => {
-        incOps[`dailyMinutes.${date}`] = Number(mins) || 0;
-      });
+      for (const [date, mins] of Object.entries(dailyMinutes)) {
+        const currentMins = history.dailyMinutes.get(date) || 0;
+        history.dailyMinutes.set(date, currentMins + (Number(mins) || 0));
+      }
     }
 
+    // Accumulate total track plays
     if (trackPlayCounts) {
-      Object.entries(trackPlayCounts).forEach(([trackId, count]) => {
-        // Replace dots in track IDs to avoid MongoDB path conflicts
+      for (const [trackId, count] of Object.entries(trackPlayCounts)) {
         const safeKey = trackId.replace(/\./g, '_');
-        incOps[`trackPlayCounts.${safeKey}`] = Number(count) || 0;
-      });
+        const currentCount = history.trackPlayCounts.get(safeKey) || 0;
+        history.trackPlayCounts.set(safeKey, currentCount + (Number(count) || 0));
+      }
     }
 
-    // $set: replace daily top tracks for each date (not incremented — recalculated each sync)
-    const setOps = { lastUpdated: new Date(), lastSyncAt: new Date() };
+    // Safely merge daily top tracks
     if (dailyTopTracks) {
-      Object.entries(dailyTopTracks).forEach(([date, tracks]) => {
-        setOps[`dailyTopTracks.${date}`] = tracks.slice(0, 5);
-      });
+      for (const [date, newTracks] of Object.entries(dailyTopTracks)) {
+        const existingTracks = history.dailyTopTracks.get(date) || [];
+        
+        // Map trackId -> track object for easy merging
+        const trackMap = new Map();
+        
+        // Add existing tracks
+        for (const t of existingTracks) {
+          trackMap.set(t.trackId, { ...t });
+        }
+        
+        // Add/Merge new tracks
+        for (const t of newTracks) {
+          if (trackMap.has(t.trackId)) {
+            const existing = trackMap.get(t.trackId);
+            existing.plays += (t.plays || 0);
+          } else {
+            trackMap.set(t.trackId, { ...t });
+          }
+        }
+        
+        // Sort by plays descending and take top 5
+        const mergedAndSorted = Array.from(trackMap.values())
+          .sort((a, b) => b.plays - a.plays)
+          .slice(0, 5);
+          
+        history.dailyTopTracks.set(date, mergedAndSorted);
+      }
     }
 
-    const result = await ListeningHistory.findOneAndUpdate(
-      { userId, weekKey },
-      { $inc: incOps, $set: setOps },
-      { upsert: true, new: true }
-    );
+    history.lastUpdated = new Date();
+    history.lastSyncAt = new Date();
+
+    await history.save();
 
     res.json({
       success: true,
-      totalMinutes: result.estimatedMinutes,
+      totalMinutes: history.estimatedMinutes,
       weekKey,
     });
   } catch (e) {

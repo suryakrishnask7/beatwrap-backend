@@ -28,38 +28,59 @@ function getWeekKey(weeksAgo = 0) {
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
 
 const TAMIL_CHARACTERS = [
-  { name: 'Chithan', film: 'Pithamagan', vibe: 'Dark ambient, sparse instrumentals, drone loops, silence as sound.' },
-  { name: 'Velu Nayakan', film: 'Nayakan', vibe: 'Slow orchestral builds, Ilaiyaraaja emotional swells, weight of a whole life.' },
-  { name: 'Vikram', film: 'Vikram Vedha', vibe: 'Driving rock, sharp action scores, music that sounds like running with purpose.' },
-  { name: 'Vedha', film: 'Vikram Vedha', vibe: 'Unpredictable playlist — hip-hop then classical then folk. All instinct.' },
-  { name: 'Ram', film: '96', vibe: 'Ambient piano, soft indie, music for quiet nights full of longing.' },
-  { name: 'Jaanu', film: '96', vibe: 'Soft acoustic songs, tender melodies, quietly heartbroken beauty.' },
-  { name: 'Paruthiveeran', film: 'Paruthiveeran', vibe: 'Raw village folk, nadaswaram, music that smells like red soil.' },
-  { name: 'Azhagar', film: 'Subramaniapuram', vibe: '90s Tamil OSTs, slow ballads, music that feels like a memory.' },
-  { name: 'Karthik', film: 'Vinnaithaandi Varuvaayaa', vibe: 'AR Rahman romantic, lush guitar, falling in love slowly.' },
-  { name: 'Jessie', film: 'Vinnaithaandi Varuvaayaa', vibe: 'Soft indie pop, acoustic restraint, standing at a door you cannot open.' },
-  { name: 'Anbuselvan', film: 'Kaakha Kaakha', vibe: 'AR Rahman action, driving rock, committed and forward-moving.' },
-  { name: 'Vinod', film: 'Kadhal Kondein', vibe: 'One artist on repeat, obsessive deep dives, same 3 songs again and again.' },
-  { name: 'Sivasami', film: 'Asuran', vibe: 'Slow folk builds, GV Prakash rawness, music rooted in survival.' },
-  { name: 'Amar', film: 'Vikram', vibe: 'Layered electronic scores, dark orchestral, Anirudh tension.' },
-  { name: 'Rolex', film: 'Vikram', vibe: 'Maximalist playlists, too many genres, everything turned up.' },
-  { name: 'Gandhi Mahaan', film: 'Mahaan', vibe: 'Genre-blending, classical then trap, cannot be pinned down.' },
-  { name: 'Rishi Kumar', film: 'Roja', vibe: 'Soft AR Rahman, longing instrumentals, missing someone far away.' },
-  { name: 'Roja', film: 'Roja', vibe: 'Waiting melodies, slow violin, hope held very carefully.' },
-  { name: 'Karthik_Alaipayuthey', film: 'Alaipayuthey', vibe: 'Youthful AR Rahman, upbeat Tamil pop, first week of being in love.' },
-  { name: 'Nallasivam', film: 'Anbe Sivam', vibe: 'Warm humanist folk, beauty in ordinary moments, arm around your shoulder.' },
-  { name: 'Prabhu', film: 'Polladhavan', vibe: 'Street energy, gritty Tamil beats, garage midnight underground.' },
-  { name: 'Divya', film: 'Mouna Ragam', vibe: 'Layered emotional Ilaiyaraaja, refuses to be simple, bittersweet.' },
-  { name: 'Pariyerum Perumal', film: 'Pariyerum Perumal', vibe: 'Indie Tamil folk, Santhosh Narayanan rawness, quiet pain.' },
-  { name: 'Kabali', film: 'Kabali', vibe: 'Santhosh Narayanan swagger, slow-walk BGMs, arriving somewhere important.' },
-  { name: 'Prabhu_IS', film: 'Irudhi Suttru', vibe: 'Driven beats, focused energy, no time for sentimentality.' },
-  { name: 'Deepak', film: 'Dhruvangal Pathinaaru', vibe: 'Minimal thriller scores, silence as music, never quite resolves.' },
-  { name: 'Jordan', film: 'Sarpatta Parambarai', vibe: 'Rise, fall, redemption — motivation and comeback energy.' },
-  { name: 'Arjun', film: '7G Rainbow Colony', vibe: 'Youth heartbreak, obsessive love songs, emotional chaos.' },
-  { name: 'Sethu', film: 'Sethu', vibe: 'Pain-heavy melodies, tragic ballads, identity lost to love.' },
+  // ── VOID / DETACHED ───────────────────────────────
+  { id: 1, name: 'Chithan', film: 'Pithamagan', archetype: 'The Void', traits: ['emotionless','isolated','primal'], music_vibe: 'Dark ambient, drone, empty soundscapes' },
+  // ── POWER / LEGACY ────────────────────────────────
+  { id: 2, name: 'Velu Nayakan', film: 'Nayakan', archetype: 'The Burdened Leader', traits: ['responsibility','legacy','moral weight'], music_vibe: 'Heavy orchestral, Ilaiyaraaja depth' },
+  { id: 3, name: 'Kabali', film: 'Kabali', archetype: 'The King', traits: ['authority','calm power','presence'], music_vibe: 'Swagger beats, slow-walk energy' },
+  { id: 4, name: 'Rolex', film: 'Vikram', archetype: 'The Apex Predator', traits: ['dominant','fearless','chaotic control'], music_vibe: 'Aggressive, maximal, high-intensity' },
+  // ── ORDER VS CHAOS ────────────────────────────────
+  { id: 5, name: 'Vikram', film: 'Vikram Vedha', archetype: 'The System', traits: ['disciplined','logical','controlled'], music_vibe: 'Structured beats, focused energy' },
+  { id: 6, name: 'Vedha', film: 'Vikram Vedha', archetype: 'The Chaos Mind', traits: ['unpredictable','philosophical','grey'], music_vibe: 'Genre-chaotic playlists' },
+  // ── LOVE / LONGING ────────────────────────────────
+  { id: 7, name: 'Ram', film: '96', archetype: 'The Nostalgic Soul', traits: ['introverted','memory-driven','soft'], music_vibe: 'Ambient piano, late-night music' },
+  { id: 8, name: 'Jaanu', film: '96', archetype: 'The Gentle Heart', traits: ['empathetic','warm','contained'], music_vibe: 'Soft acoustic, tender melodies' },
+  { id: 9, name: 'Karthik_VTV', film: 'Vinnaithaandi Varuvaayaa', archetype: 'The Romantic Idealist', traits: ['passionate','dreamy','persistent'], music_vibe: 'AR Rahman romance' },
+  { id: 10, name: 'Jessie', film: 'Vinnaithaandi Varuvaayaa', archetype: 'The Unreachable', traits: ['guarded','conflicted','distant'], music_vibe: 'Soft indie restraint' },
+  { id: 11, name: 'Karthik_Alaipayuthey', film: 'Alaipayuthey', archetype: 'The Young Lover', traits: ['playful','intense','immature'], music_vibe: 'Upbeat love songs' },
+  { id: 12, name: 'Swapna', film: 'Vallavan', archetype: 'The Illusion', traits: ['idealized','unreachable','fantasy-driven'], music_vibe: 'Dreamy love tracks, obsessive romance' },
+  // ── OBSESSION / BREAKDOWN ─────────────────────────
+  { id: 13, name: 'Vinod', film: 'Kadhal Kondein', archetype: 'The Obsessive', traits: ['fixated','unstable','intense'], music_vibe: 'Looped songs, emotional repetition' },
+  { id: 14, name: 'Sethu', film: 'Sethu', archetype: 'The Broken Lover', traits: ['tragic','fragile','identity loss'], music_vibe: 'Pain-heavy melodies' },
+  // ── RAW / ROOTED ──────────────────────────────────
+  { id: 15, name: 'Paruthiveeran', film: 'Paruthiveeran', archetype: 'The Untamed', traits: ['wild','impulsive','earthy'], music_vibe: 'Raw folk, gaana' },
+  { id: 16, name: 'Sivasami', film: 'Asuran', archetype: 'The Survivor', traits: ['protective','grounded','silent strength'], music_vibe: 'Slow folk builds' },
+  { id: 17, name: 'Pariyerum Perumal', film: 'Pariyerum Perumal', archetype: 'The Silent Fighter', traits: ['resilient','observant','quiet pain'], music_vibe: 'Indie folk, rooted emotion' },
+  // ── STREET / REAL ─────────────────────────────────
+  { id: 18, name: 'Prabhu', film: 'Polladhavan', archetype: 'The Hustler', traits: ['street-smart','ambitious','grounded'], music_vibe: 'Gritty underground beats' },
+  { id: 19, name: 'Azhagar', film: 'Subramaniapuram', archetype: 'The Loyal Friend', traits: ['loyal','emotional','tragic'], music_vibe: 'Retro Ilaiyaraaja nostalgia' },
+  { id: 20, name: 'Anbu', film: 'Madras', archetype: 'The Voice', traits: ['political','grounded','community-driven'], music_vibe: 'Gaana + protest music' },
+  // ── DISCIPLINE / STRUCTURE ────────────────────────
+  { id: 21, name: 'Anbuselvan', film: 'Kaakha Kaakha', archetype: 'The Protector', traits: ['focused','disciplined','sacrificial'], music_vibe: 'Sharp action scores' },
+  { id: 22, name: 'Prabhu', film: 'Irudhi Suttru', archetype: 'The Coach', traits: ['harsh','driven','results-first'], music_vibe: 'Training beats' },
+  // ── HUMANISM ──────────────────────────────────────
+  { id: 23, name: 'Nallasivam', film: 'Anbe Sivam', archetype: 'The Humanist', traits: ['empathetic','kind','philosophical'], music_vibe: 'Warm soulful music' },
+  // ── IDENTITY / MODERN ─────────────────────────────
+  { id: 24, name: 'Gandhi Mahaan', film: 'Mahaan', archetype: 'The Rebellion', traits: ['freedom-seeking','conflicted','evolving'], music_vibe: 'Genre-mixing chaos' },
+  { id: 25, name: 'Amar', film: 'Vikram', archetype: 'The Seeker', traits: ['curious','driven','layered'], music_vibe: 'Electronic cinematic' },
+  // ── CLASSIC EMOTION ───────────────────────────────
+  { id: 26, name: 'Divya', film: 'Mouna Ragam', archetype: 'The Conflicted Soul', traits: ['independent','layered','introspective'], music_vibe: 'Bittersweet Ilaiyaraaja' },
+  { id: 27, name: 'Rishi Kumar', film: 'Roja', archetype: 'The Devoted', traits: ['loyal','hopeful','loving'], music_vibe: 'Soft longing melodies' },
+  { id: 28, name: 'Roja', film: 'Roja', archetype: 'The Waiting Heart', traits: ['patient','hopeful','strong'], music_vibe: 'Emotional strings' },
+  // ── ICONIC ADDITIONS (NEW BANGERS) ────────────────
+  { id: 29, name: 'Krishnan', film: 'Vaaranam Aayiram', archetype: 'The Explorer', traits: ['growth','emotional journey','self-discovery'], music_vibe: 'Travel + life-phase music' },
+  { id: 30, name: 'Jordan', film: 'Sarpatta Parambarai', archetype: 'The Comeback', traits: ['rise','fall','redemption'], music_vibe: 'Motivation + comeback energy' },
+  { id: 31, name: 'Arjun', film: '7G Rainbow Colony', archetype: 'The Reckless Lover', traits: ['immature','obsessive','emotional'], music_vibe: 'Youth heartbreak + chaos' },
+  { id: 32, name: 'Kitta', film: 'Bison', archetype: 'The Minimalist', traits: ['quiet','detached','observant'], music_vibe: 'Lo-fi, minimal, low-energy music' },
+  { id: 33, name: 'Guru', film: 'Guru', archetype: 'The Visionary', traits: ['ambitious','risk-taking','driven'], music_vibe: 'Big build, inspirational' },
+  { id: 34, name: 'Surya', film: 'Vaaranam Aayiram', archetype: 'The Son', traits: ['emotional','respect-driven','growth'], music_vibe: 'Emotional journey tracks' },
+  { id: 35, name: 'Sakthi', film: 'Sivaji', archetype: 'The Game Changer', traits: ['bold','visionary','impact-driven'], music_vibe: 'Mass + grand energy' },
+  { id: 36, name: 'Michael', film: 'Bigil', archetype: 'The Leader', traits: ['mentor','strong','responsible'], music_vibe: 'Motivational + team energy' },
+  { id: 37, name: 'Raghuvaran', film: 'VIP', archetype: 'The Underdog', traits: ['frustrated','talented','rising'], music_vibe: 'Angry youth + ambition' },
+  { id: 38, name: 'Deepak', film: 'Dhruvangal Pathinaaru', archetype: 'The Analyst', traits: ['observant','calm','intellectual'], music_vibe: 'Minimal thriller, ambient tension' },
 ];
 
-const CHARACTER_LIST = TAMIL_CHARACTERS.map(c => `${c.name} (${c.film}) — ${c.vibe}`).join('\n');
+const CHARACTER_LIST = TAMIL_CHARACTERS.map(c => `${c.id}. ${c.name} (${c.film})\n   Music this character represents: ${c.music_vibe}`).join('\n\n');
 
 // GET /api/wrap/current
 router.get('/current', authMiddleware, async (req, res) => {

@@ -40,3 +40,6 @@ coverage/
 # OS
 .DS_Store
 Thumbs.db
+
+# Demo scripts
+seedDemo.js

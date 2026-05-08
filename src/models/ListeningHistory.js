@@ -42,6 +42,7 @@ const listeningHistorySchema = new mongoose.Schema({
 
   lastSyncAt:  { type: Date, default: null },
   lastUpdated: { type: Date, default: Date.now },
+  exportedPlaylistId: { type: String, default: null },
 }, { timestamps: true });
 
 listeningHistorySchema.index({ userId: 1, weekKey: 1 }, { unique: true });

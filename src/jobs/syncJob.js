@@ -217,31 +217,63 @@ const syncAllUsers = async () => {
           const artistIds = Array.from(history.artistMeta.keys())
             .filter(id => {
               const meta = history.artistMeta.get(id);
-              return !meta?.genres || meta.genres.length === 0;
+              return !meta?.genres || meta.genres.length === 0 || !meta.image;
             })
-            .slice(0, 50);
+            .slice(0, 15); // Process up to 15 at a time since we might need to fallback to individual search requests
 
           if (artistIds.length > 0) {
             const axios = require('axios');
-            const res = await axios.get(`https://api.spotify.com/v1/artists?ids=${artistIds.join(',')}`, {
-              headers: { Authorization: `Bearer ${token}` }
-            });
             let enriched = 0;
-            for (const artist of (res.data.artists || [])) {
-              if (!artist) continue;
-              const existing = history.artistMeta.get(artist.id) || {};
-              history.artistMeta.set(artist.id, {
-                ...existing,
-                name: artist.name,
-                image: artist.images?.[0]?.url || existing.image || null,
-                genres: artist.genres?.length > 0 ? artist.genres : (existing.genres || []),
+            try {
+              // Try the bulk endpoint first
+              const res = await axios.get(`https://api.spotify.com/v1/artists?ids=${artistIds.join(',')}`, {
+                headers: { Authorization: `Bearer ${token}` }
               });
-              enriched++;
+              for (const artist of (res.data.artists || [])) {
+                if (!artist) continue;
+                const existing = history.artistMeta.get(artist.id) || {};
+                history.artistMeta.set(artist.id, {
+                  ...existing,
+                  name: artist.name,
+                  image: artist.images?.[0]?.url || existing.image || null,
+                  genres: artist.genres?.length > 0 ? artist.genres : (existing.genres || []),
+                });
+                enriched++;
+              }
+            } catch (e) {
+              // 403 = Spotify dev mode restriction. Fallback to /search API which is NOT blocked!
+              if (e.response && e.response.status === 403) {
+                console.log('  ⚠️ Bulk artist API 403 Forbidden. Falling back to Search API...');
+                for (const id of artistIds) {
+                  try {
+                    const existing = history.artistMeta.get(id);
+                    if (!existing || !existing.name) continue;
+                    
+                    const searchRes = await axios.get(`https://api.spotify.com/v1/search?q=${encodeURIComponent('artist:' + existing.name)}&type=artist&limit=1`, {
+                      headers: { Authorization: `Bearer ${token}` }
+                    });
+                    
+                    const foundArtist = searchRes.data.artists?.items?.[0];
+                    if (foundArtist && foundArtist.name.toLowerCase() === existing.name.toLowerCase()) {
+                      history.artistMeta.set(id, {
+                        ...existing,
+                        image: foundArtist.images?.[0]?.url || existing.image || null,
+                        genres: foundArtist.genres?.length > 0 ? foundArtist.genres : (existing.genres || []),
+                      });
+                      enriched++;
+                    }
+                  } catch (searchErr) {
+                    console.error('Search API fallback failed for artist:', existing?.name);
+                  }
+                  // Small delay to prevent rate limiting
+                  await new Promise(r => setTimeout(r, 200));
+                }
+              }
             }
             console.log(`  📊 Enriched ${enriched} artists`);
           }
         } catch (e) {
-          // 403 = Spotify dev mode restriction, non-critical — frontend falls back to colored initials
+          console.error('Artist enrichment error:', e.message);
         }
 
         // Update timestamps

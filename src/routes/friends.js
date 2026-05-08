@@ -1,6 +1,7 @@
 const express = require('express');
 const User = require('../models/User');
 const WeeklyWrap = require('../models/WeeklyWrap');
+const Friendship = require('../models/Friendship');
 const authMiddleware = require('../middleware/auth');
 const axios = require('axios');
 const router = express.Router();
@@ -47,13 +48,14 @@ router.post('/request', authMiddleware, async (req, res) => {
     }
 
     // Already sent
-    const existing = toUser.friendRequests?.find(
-      r => r.from.toString() === fromId && r.status === 'pending'
-    );
+    const existing = await Friendship.findOne({
+      requester: fromId,
+      recipient: toId,
+      status: 'pending'
+    });
     if (existing) return res.status(400).json({ message: 'Request already sent' });
 
-    toUser.friendRequests.push({ from: fromId, status: 'pending' });
-    await toUser.save();
+    await Friendship.create({ requester: fromId, recipient: toId, status: 'pending' });
 
     res.json({ success: true });
   } catch (e) {
@@ -65,11 +67,15 @@ router.post('/request', authMiddleware, async (req, res) => {
 // GET /api/friends/requests/pending/:userId
 router.get('/requests/pending/:userId', authMiddleware, async (req, res) => {
   try {
-    const user = await User.findById(req.params.userId)
-      .populate('friendRequests.from', 'displayName username profileImage');
-    if (!user) return res.status(404).json({ error: 'User not found' });
-    const pending = (user.friendRequests || []).filter(r => r.status === 'pending');
-    res.json({ requests: pending });
+    const pending = await Friendship.find({ recipient: req.params.userId, status: 'pending' })
+      .populate('requester', 'displayName username profileImage');
+    
+    // Map to frontend expected structure: [{ from: { ...user }, _id: 'requestId' }]
+    const formatted = pending.map(p => ({
+      _id: p._id,
+      from: p.requester
+    }));
+    res.json({ requests: formatted });
   } catch (e) {
     res.status(500).json({ error: 'Failed to fetch requests' });
   }
@@ -78,16 +84,19 @@ router.get('/requests/pending/:userId', authMiddleware, async (req, res) => {
 // PUT /api/friends/request/:requestId/accept
 router.put('/request/:requestId/accept', authMiddleware, async (req, res) => {
   try {
-    const user = await User.findById(req.user.id);
-    const request = user.friendRequests.id(req.params.requestId);
+    const request = await Friendship.findById(req.params.requestId);
     if (!request) return res.status(404).json({ error: 'Request not found' });
 
     request.status = 'accepted';
-    user.friends.addToSet(request.from);
-    await user.save();
+    await request.save();
 
-    await User.findByIdAndUpdate(request.from, {
-      $addToSet: { friends: req.user.id },
+    // Cache friends in the User document
+    await User.findByIdAndUpdate(request.recipient, {
+      $addToSet: { friends: request.requester },
+    });
+
+    await User.findByIdAndUpdate(request.requester, {
+      $addToSet: { friends: request.recipient },
     });
 
     res.json({ success: true });
@@ -99,26 +108,34 @@ router.put('/request/:requestId/accept', authMiddleware, async (req, res) => {
 // GET /api/friends/:userId — returns friends with their latest wrap
 router.get('/:userId', authMiddleware, async (req, res) => {
   try {
+    const limit = parseInt(req.query.limit) || 20;
+    const skip = parseInt(req.query.skip) || 0;
+
     const user = await User.findById(req.params.userId)
-      .populate('friends', 'displayName username profileImage');
+      .populate({
+        path: 'friends',
+        select: 'displayName username profileImage lastPlayedTrack',
+        options: { skip, limit }
+      });
     if (!user) return res.status(404).json({ error: 'User not found' });
 
     // Attach latest wrap to each friend
     const friendsWithWrap = await Promise.all(
       user.friends.map(async (friend) => {
-        const wrap = await WeeklyWrap.findOne({ userId: friend._id }).sort({ createdAt: -1 });
+        const wrap = await WeeklyWrap.findOne({ userId: friend._id }).sort({ createdAt: -1 }).lean();
         return {
           _id: friend._id,
           displayName: friend.displayName,
           username: friend.username,
           profileImage: friend.profileImage,
+          lastPlayedTrack: friend.lastPlayedTrack || null,
           wrap: wrap?.aiWrap || null,
           stats: wrap?.stats || null,
         };
       })
     );
 
-    res.json({ friends: friendsWithWrap });
+    res.json({ friends: friendsWithWrap, hasMore: user.friends.length === limit });
   } catch (e) {
     console.error('Get friends error:', e);
     res.status(500).json({ error: 'Failed to fetch friends' });

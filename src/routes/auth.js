@@ -7,7 +7,7 @@ const router = express.Router();
 // POST /api/auth/spotify
 router.post('/spotify', async (req, res) => {
   try {
-    let { spotifyId, displayName, email, profileImage, spotifyToken } = req.body;
+    let { spotifyId, displayName, email, profileImage, spotifyToken, spotifyRefreshToken, expiresIn } = req.body;
 
     if (!spotifyId) return res.status(400).json({ error: 'spotifyId required' });
 
@@ -16,14 +16,21 @@ router.post('/spotify', async (req, res) => {
       profileImage = null;
     }
 
+    const expiry = new Date(Date.now() + (expiresIn || 3600) * 1000);
+
     let user = await User.findOne({ spotifyId });
     if (user) {
       user.spotifyToken = spotifyToken;
+      if (spotifyRefreshToken) user.spotifyRefreshToken = spotifyRefreshToken;
+      user.spotifyTokenExpiry = expiry;
       user.displayName = displayName;
       if (profileImage) user.profileImage = profileImage;
       await user.save();
     } else {
-      user = await User.create({ spotifyId, displayName, email, profileImage, spotifyToken });
+      user = await User.create({ 
+        spotifyId, displayName, email, profileImage, 
+        spotifyToken, spotifyRefreshToken, spotifyTokenExpiry: expiry 
+      });
     }
 
     const token = jwt.sign(

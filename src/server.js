@@ -6,6 +6,8 @@ const { WebSocketServer } = require('ws');
 const jwt = require('jsonwebtoken');
 require('dotenv').config();
 
+const { startSyncJob } = require('./jobs/syncJob');
+
 const app = express();
 const server = http.createServer(app);
 
@@ -42,7 +44,6 @@ wss.on('connection', (ws) => {
         if (existing && existing !== ws) existing.terminate();
         clients.set(userId, ws);
         ws.send(JSON.stringify({ type: 'auth_ok', userId }));
-        console.log(`WS: user ${userId} connected`);
         return;
       }
       if (!userId) { ws.send(JSON.stringify({ type: 'error', message: 'Not authenticated' })); return; }
@@ -63,7 +64,7 @@ wss.on('connection', (ws) => {
   });
 
   ws.on('close', () => {
-    if (userId && clients.get(userId) === ws) { clients.delete(userId); console.log(`WS: user ${userId} disconnected`); }
+    if (userId && clients.get(userId) === ws) { clients.delete(userId); }
   });
   ws.on('error', (e) => { console.error('WS error:', e.message); ws.terminate(); });
 });
@@ -87,10 +88,50 @@ app.use('/api/stats', require('./routes/stats'));
 app.use('/api/sessions', require('./routes/sessions'));
 app.get('/health', (req, res) => res.json({ status: 'ok', timestamp: new Date() }));
 
+// Manual sync trigger — hit from terminal: curl http://localhost:5000/api/debug/sync
+app.get('/api/debug/sync', async (req, res) => {
+  const { syncAllUsers } = require('./jobs/syncJob');
+  await syncAllUsers();
+  res.json({ done: true });
+});
+
+// Check user tokens — curl http://localhost:5000/api/debug/users
+app.get('/api/debug/users', async (req, res) => {
+  const User = require('./models/User');
+  const users = await User.find({}).select('displayName spotifyId spotifyRefreshToken spotifyTokenExpiry');
+  res.json(users.map(u => ({
+    name: u.displayName,
+    hasRefreshToken: !!u.spotifyRefreshToken,
+    tokenExpiry: u.spotifyTokenExpiry,
+  })));
+});
+
+// Check listening stats — curl http://localhost:5000/api/debug/stats
+app.get('/api/debug/stats', async (req, res) => {
+  const ListeningHistory = require('./models/ListeningHistory');
+  const histories = await ListeningHistory.find({}).populate('userId', 'displayName');
+  res.json(histories.map(h => ({
+    user: h.userId?.displayName,
+    weekKey: h.weekKey,
+    totalMinutes: Math.round(h.estimatedMinutes),
+    uniqueTracks: h.trackPlayCounts?.size || 0,
+    uniqueArtists: h.artistPlayCounts?.size || 0,
+    topTrack: h.topTracksOfWeek?.[0]?.name || 'none',
+    topArtist: h.topArtistsOfWeek?.[0]?.name || 'none',
+    explorationIndex: h.explorationIndex,
+    discoveryRate: h.discoveryRate,
+    replayFrequency: h.replayFrequency,
+    lastSync: h.lastSyncAt,
+  })));
+});
+
 // ── MongoDB connect — NO scheduler ───────────────────────────────────────────
 // REMOVED: startScheduler() — wrap generation is now 100% user-triggered from frontend
 mongoose.connect(process.env.MONGODB_URI)
-  .then(() => console.log('MongoDB connected'))
+  .then(() => {
+    console.log('MongoDB connected');
+    startSyncJob();
+  })
   .catch(e => console.error('MongoDB error:', e));
 
 const PORT = process.env.PORT || 5000;

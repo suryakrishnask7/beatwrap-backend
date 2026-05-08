@@ -7,14 +7,20 @@ const userSchema = new mongoose.Schema({
   email: { type: String },
   profileImage: { type: String },
   spotifyToken: { type: String },
+  spotifyRefreshToken: { type: String },
+  spotifyTokenExpiry: { type: Date },
   friends: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
-  friendRequests: [{
-    from: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-    status: { type: String, enum: ['pending', 'accepted', 'rejected'], default: 'pending' },
-    createdAt: { type: Date, default: Date.now },
-  }],
+  // friendRequests have been moved to the Friendship model
   // NEW: tracks when user last regenerated their character — enforces once-per-day limit
   lastCharacterRegenAt: { type: Date, default: null },
+  // Tracks the most recently played song for the friends "Notes" feature
+  lastPlayedTrack: {
+    trackId: String,
+    name: String,
+    artist: String,
+    albumImg: String,
+    playedAt: Date
+  },
 }, { timestamps: true });
 
 module.exports = mongoose.model('User', userSchema);

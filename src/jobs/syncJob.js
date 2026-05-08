@@ -21,13 +21,22 @@ function recomputeStats(history) {
   const artistMeta = Object.fromEntries(history.artistMeta || new Map());
   const trackMeta = Object.fromEntries(history.trackMeta || new Map());
 
+  // Build a fallback metadata map from dailyTopTracks for backwards compatibility
+  const fallbackMeta = {};
+  for (const [, tracks] of history.dailyTopTracks || new Map()) {
+    for (const t of tracks) {
+      if (t.trackId && !fallbackMeta[t.trackId]) fallbackMeta[t.trackId] = t;
+    }
+  }
+
   // ── Top 5 Tracks of the Week (locked-in) ──────────────────────────────
   const sortedTracks = Object.entries(trackPlayCounts)
     .sort(([, a], [, b]) => b - a)
     .slice(0, 5);
 
   history.topTracksOfWeek = sortedTracks.map(([trackId, plays]) => {
-    const meta = trackMeta[trackId] || {};
+    // Prefer explicitly saved trackMeta, fallback to what we logged in dailyTopTracks
+    const meta = trackMeta[trackId] || fallbackMeta[trackId] || {};
     return {
       trackId,
       name: meta.name || 'Unknown Track',
@@ -175,12 +184,9 @@ const syncAllUsers = async () => {
             if (!existing) {
               history.artistMeta.set(artistId, {
                 name: artist.name,
-                image: albumImg, // use album art as artist image fallback
+                image: null, // do not use album art, frontend handles null with colored initials
                 genres: [],
               });
-            } else if (!existing.image && albumImg) {
-              // Backfill image if we didn't have one
-              history.artistMeta.set(artistId, { ...existing, image: albumImg });
             }
           }
 
@@ -235,7 +241,7 @@ const syncAllUsers = async () => {
             console.log(`  📊 Enriched ${enriched} artists`);
           }
         } catch (e) {
-          // 403 = Spotify dev mode restriction, non-critical — album images are used as fallback
+          // 403 = Spotify dev mode restriction, non-critical — frontend falls back to colored initials
         }
 
         // Update timestamps

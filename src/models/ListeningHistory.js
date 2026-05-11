@@ -13,7 +13,8 @@ const listeningHistorySchema = new mongoose.Schema({
   // ── Locked-in weekly top 5 (computed from trackPlayCounts by cron) ──
   topTracksOfWeek: [{ 
     trackId: String, name: String, artist: String, 
-    albumImg: String, plays: Number, durationMs: Number 
+    albumImg: String, plays: Number, durationMs: Number,
+    spotifyUrl: String, uri: String
   }],
   topArtistsOfWeek: [{
     artistId: String, name: String, image: String,

@@ -30,22 +30,22 @@ function recomputeStats(history) {
   }
 
   // ── Top 5 Tracks of the Week (locked-in) ──────────────────────────────
-  const sortedTracks = Object.entries(trackPlayCounts)
-    .sort(([, a], [, b]) => b - a)
+  history.topTracksOfWeek = Array.from(history.trackPlayCounts.entries())
+    .map(([id, plays]) => {
+      const meta = history.trackMeta.get(id);
+      return {
+        trackId: id,
+        name: meta?.name || 'Unknown',
+        artist: meta?.artist || 'Unknown',
+        albumImg: meta?.albumImg || null,
+        durationMs: meta?.durationMs || 0,
+        spotifyUrl: meta?.spotifyUrl || null,
+        uri: meta?.uri || null,
+        plays
+      };
+    })
+    .sort((a, b) => b.plays - a.plays)
     .slice(0, 5);
-
-  history.topTracksOfWeek = sortedTracks.map(([trackId, plays]) => {
-    // Prefer explicitly saved trackMeta, fallback to what we logged in dailyTopTracks
-    const meta = trackMeta[trackId] || fallbackMeta[trackId] || {};
-    return {
-      trackId,
-      name: meta.name || 'Unknown Track',
-      artist: meta.artist || 'Unknown Artist',
-      albumImg: meta.albumImg || null,
-      plays,
-      durationMs: meta.durationMs || 0,
-    };
-  });
 
   // ── Top 5 Artists of the Week ─────────────────────────────────────────
   const sortedArtists = Object.entries(artistPlayCounts)
@@ -166,6 +166,8 @@ const syncAllUsers = async () => {
             artist: primaryArtist,
             albumImg,
             durationMs,
+            spotifyUrl: track.external_urls?.spotify,
+            uri: track.uri,
           });
 
           // ── Track Play Counts ──────────────────────────────────────────
@@ -205,6 +207,18 @@ const syncAllUsers = async () => {
           
           dailyTracks.sort((a, b) => b.plays - a.plays);
           history.dailyTopTracks.set(todayStr, dailyTracks.slice(0, 10));
+
+          // ── Recently Played (last 20 tracks) ───────────────────────────
+          const recentTrack = {
+            trackId, name: track.name, artist: primaryArtist,
+            albumImg, playedAt: new Date(item.played_at)
+          };
+          // Add to front of array
+          history.recentlyPlayed.unshift(recentTrack);
+          // Deduplicate (consecutive plays) and slice to 20
+          history.recentlyPlayed = history.recentlyPlayed
+            .filter((t, i, self) => i === 0 || t.trackId !== self[i-1].trackId)
+            .slice(0, 20);
         }
 
         // Add to total and daily minutes (integer only)

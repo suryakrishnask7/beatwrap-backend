@@ -179,12 +179,12 @@ const syncAllUsers = async () => {
             const artistCount = history.artistPlayCounts.get(artistId) || 0;
             history.artistPlayCounts.set(artistId, artistCount + 1);
 
-            // Store artist meta — use album art as image fallback
+            // Store artist meta — use album art as image fallback initially
             const existing = history.artistMeta.get(artistId);
             if (!existing) {
               history.artistMeta.set(artistId, {
                 name: artist.name,
-                image: null, // do not use album art, frontend handles null with colored initials
+                image: albumImg, // use album art as fallback initially
                 genres: [],
               });
             }
@@ -219,7 +219,7 @@ const syncAllUsers = async () => {
               const meta = history.artistMeta.get(id);
               return !meta?.genres || meta.genres.length === 0 || !meta.image;
             })
-            .slice(0, 15); // Process up to 15 at a time since we might need to fallback to individual search requests
+            .slice(0, 50); // Process up to 50 at a time to ensure all artists get images quickly
 
           if (artistIds.length > 0) {
             const axios = require('axios');
